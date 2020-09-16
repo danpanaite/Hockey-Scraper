@@ -122,14 +122,6 @@ class LiveGame:
         else:
             return pd.DataFrame()
 
-    @property
-    def prev_pbp_df(self):
-        if isinstance(self._prev_shifts_df, pd.DataFrame):
-            return self._prev_shifts_df
-        else:
-            return pd.DataFrame()
-
-
     def scrape(self, force=False):
         """
         Scrape the given game. Check if currently ongoing or started
