@@ -3,6 +3,7 @@ This module contains code to scrape data for a single game
 """
 
 import pandas as pd
+from datetime import datetime
 
 import hockey_scraper.nhl.pbp.espn_pbp as espn_pbp
 import hockey_scraper.nhl.pbp.html_pbp as html_pbp
@@ -33,9 +34,9 @@ pbp_columns = [
 def check_goalie(row):
     """
     Checks for bad goalie names (you can tell by them having no player id)
-    
+
     :param row: df row
-    
+
     :return: None
     """
     if row['Away_Goalie'] != '' and row['Away_Goalie_Id'] is None:
@@ -61,6 +62,20 @@ def get_sebastian_aho(player):
     return 8480222 if player[1] == 'D' else 8478427
 
 
+def get_drew_miller(player):
+    """
+    This checks which Andrew/Drew Miller it is based on the position. I have the player id's hardcoded here. 
+
+    This function is needed because "get_players_json" doesn't control for when there are two Sebastian Aho's (it just 
+    writes over the first one). 
+
+    :param player: player info
+
+    :return: Player ID for specific Aho
+    """
+    return 8470778 if player[1] == 'L' else 8477249
+
+
 # TODO: Control for multiple players with the same name
 # Issue is player data in the json is dynamic team/position/number reflects current status as oppossed to html
 # which is as the time of the game
@@ -76,11 +91,13 @@ def get_players_json(players_json):
 
     for key in players_json:
         name = shared.fix_name(players_json[key]['fullName'].upper())
-        players[name] = {'id': None, 'last_name': players_json[key]['lastName'].upper()}
+        players[name] = {'id': None,
+                         'last_name': players_json[key]['lastName'].upper()}
         try:
             players[name]['id'] = players_json[key]['id']
         except KeyError:
-            shared.print_warning('{name} is missing an ID number in the pbp json'.format(name=name))
+            shared.print_warning(
+                '{name} is missing an ID number in the pbp json'.format(name=name))
 
     return players
 
@@ -101,8 +118,16 @@ def combine_players_lists(json_players, roster_players, game_id):
         for player in roster_players[venue]:
             try:
                 name = shared.fix_name(player[2])
-                player_id = json_players[name]['id'] if name != 'SEBASTIAN AHO' else get_sebastian_aho(player)
-                players[venue][name] = {'id': player_id, 'number': player[0], 'last_name': json_players[name]['last_name']}
+
+                if name == 'SEBASTIAN AHO':
+                    player_id = get_sebastian_aho(player)
+                elif name == 'DREW MILLER':
+                    player_id = get_drew_miller(player)
+                else:
+                    player_id = json_players[name]['id']
+
+                players[venue][name] = {
+                    'id': player_id, 'number': player[0], 'last_name': json_players[name]['last_name']}
             except KeyError:
                 # If he was listed as a scratch and not a goalie (check_goalie deals with goalies)
                 # As a whole the scratch list shouldn't be trusted but if a player is missing an id # and is on the
@@ -110,7 +135,8 @@ def combine_players_lists(json_players, roster_players, game_id):
                 if not player[3] and player[1] != 'G':
                     player.extend([game_id])
                     players_missing_ids.extend([[player[2], player[4]]])
-                    players[venue][name] = {'id': None, 'number': player[0], 'last_name': ''}
+                    players[venue][name] = {
+                        'id': None, 'number': player[0], 'last_name': ''}
 
     return players
 
@@ -129,27 +155,81 @@ def get_teams_and_players(game_json, roster, game_id):
         teams = json_pbp.get_teams(game_json)
         player_ids = get_players_json(game_json['gameData']['players'])
         players = combine_players_lists(player_ids, roster['players'], game_id)
-    except Exception as e:
+    except Exception:
         shared.print_error('Problem with getting the teams or players')
         return None, None
 
     return players, teams
 
 
+def srape_game_details(game_id, game_json):
+    game = {
+        'id': int(game_id),
+        'season': game_json['gameData']['game']['season'],
+        'type': int(game_id[5]),
+        'start_time': datetime.strptime(game_json['gameData']['datetime']['dateTime'], "%Y-%m-%dT%H:%M:%SZ"),
+        'home_team': game_json['gameData']['teams']['home']['abbreviation'],
+        'away_team': game_json['gameData']['teams']['away']['abbreviation'],
+        'game_end': 'REG' if game_json['liveData']['linescore']['currentPeriod'] == 3 else 'SO' if game_json['liveData']['linescore']['hasShootout'] else 'OT',
+        'home_score': game_json['liveData']['linescore']['teams']['home']['goals'],
+        'away_score': game_json['liveData']['linescore']['teams']['away']['goals'],
+    }
+
+    if("endDateTime" in game_json['gameData']['datetime']):
+        game['end_time'] = datetime.strptime(
+            game_json['gameData']['datetime']['endDateTime'], "%Y-%m-%dT%H:%M:%SZ")
+    else:
+        game['end_time'] = None
+
+    if("id" in game_json['gameData']['venue']):
+        game['venue_id'] = game_json['gameData']['venue']['id']
+    else:
+        game['venue_id'] = None
+
+    return pd.DataFrame([game])
+
+
+def scrape_game_players(game_id, players, teams):
+    game_players_home = pd.DataFrame()
+    game_players_away = pd.DataFrame()
+
+    game_players_home['player_id'] = pd.DataFrame(
+        list(players['Home'].values()))['id']
+    game_players_home['game_id'] = int(game_id)
+    game_players_home['team'] = teams['Home']
+    game_players_home['opponent'] = teams['Away']
+
+    game_players_away['player_id'] = pd.DataFrame(
+        list(players['Away'].values()))['id']
+    game_players_away['game_id'] = int(game_id)
+    game_players_away['team'] = teams['Away']
+    game_players_away['opponent'] = teams['Home']
+
+    game_players = pd.concat([game_players_home, game_players_away])
+
+    game_players['id'] = (game_players['game_id'].astype(
+        str) + game_players['player_id'].astype(str))
+
+    game_players = game_players[game_players['player_id'] > 0]
+
+    return game_players
+
+
 def combine_html_json_pbp(json_df, html_df, game_id, date):
     """
     Join both data sources. First try merging on event id (which is the DataFrame index) if both DataFrames have the
     same number of rows. If they don't have the same number of rows, merge on: Period', Event, Seconds_Elapsed, p1_ID. 
-    
+
     :param json_df: json pbp DataFrame
     :param html_df: html pbp DataFrame
     :param game_id: id of game
     :param date: date of game
-    
+
     :return: finished pbp
     """
     # Don't need those columns to merge in
-    json_df = json_df.drop(['p1_name', 'p2_name', 'p2_ID', 'p3_name', 'p3_ID'], axis=1)
+    json_df = json_df.drop(
+        ['p1_name', 'p2_name', 'p2_ID', 'p3_name', 'p3_ID'], axis=1)
 
     # print("json", json_df.dtypes)
     # print("html", html_df.dtypes)
@@ -157,8 +237,10 @@ def combine_html_json_pbp(json_df, html_df, game_id, date):
     try:
         # If they aren't equal it's usually due to the HTML containing a challenge event
         if html_df.shape[0] == json_df.shape[0]:
-            json_df = json_df[['period', 'event', 'seconds_elapsed', 'xC', 'yC']]
-            game_df = pd.merge(html_df, json_df, left_index=True, right_index=True, how='left')
+            json_df = json_df[['period', 'event',
+                               'seconds_elapsed', 'xC', 'yC']]
+            game_df = pd.merge(html_df, json_df, left_index=True,
+                               right_index=True, how='left')
         else:
             # We always merge if they aren't equal but we check if it's due to a challenge so we can print out a better
             # warning message for the user.
@@ -176,10 +258,12 @@ def combine_html_json_pbp(json_df, html_df, game_id, date):
                                right_on=['period', 'event', 'seconds_elapsed', 'p1_ID'], how='left')
 
         # This is always done - because merge doesn't work well with shootouts
-        game_df = game_df.drop_duplicates(subset=['Period', 'Event', 'Description', 'Seconds_Elapsed'])
+        game_df = game_df.drop_duplicates(
+            subset=['Period', 'Event', 'Description', 'Seconds_Elapsed'])
     except Exception as e:
         print(e)
-        shared.print_error('Problem combining Html Json pbp for game {}'.format(game_id, e))
+        shared.print_error(
+            'Problem combining Html Json pbp for game {}'.format(game_id, e))
         return
 
     game_df['Game_Id'] = game_id[-5:]
@@ -191,16 +275,16 @@ def combine_html_json_pbp(json_df, html_df, game_id, date):
 def combine_espn_html_pbp(html_df, espn_df, game_id, date, away_team, home_team):
     """
     Merge the coordinate from the espn feed into the html DataFrame
-    
+
     Can't join here on event_id because the plays are often out of order and pre-2009 are often missing events. 
-    
+
     :param html_df: DataFrame with info from html pbp
     :param espn_df: DataFrame with info from espn pbp
     :param game_id: json game id
     :param date: ex: 2016-10-24
     :param away_team: away team
     :param home_team: home team
-    
+
     :return: merged DataFrame
     """
     if espn_df is not None and not espn_df.empty:
@@ -209,11 +293,13 @@ def combine_espn_html_pbp(html_df, espn_df, game_id, date, away_team, home_team)
                                right_on=['period', 'time_elapsed', 'event'], how='left')
 
             # Shit happens
-            game_df = game_df.drop_duplicates(subset=['Period', 'Event', 'Description', 'Seconds_Elapsed'])
+            game_df = game_df.drop_duplicates(
+                subset=['Period', 'Event', 'Description', 'Seconds_Elapsed'])
 
             df = game_df.drop(['period', 'time_elapsed', 'event'], axis=1)
-        except Exception as e:
-            shared.print_error('Error combining espn and html pbp for game {}'.format(game_id))
+        except Exception:
+            shared.print_error(
+                'Error combining espn and html pbp for game {}'.format(game_id))
             return None
     else:
         df = html_df
@@ -241,7 +327,8 @@ def scrape_pbp_live(game_id, date, roster, game_json, players, teams, espn_id=No
     :return: Tuple - pbp & status
     """
     html_df, status = html_pbp.scrape_game_live(game_id, players, teams)
-    game_df = scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=espn_id, html_df=html_df)
+    game_df = scrape_pbp(game_id, date, roster, game_json,
+                         players, teams, espn_id=espn_id, html_df=html_df)
     return game_df, status
 
 
@@ -266,9 +353,10 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
     if int(str(game_id)[:4]) >= 2010:
         json_df = json_pbp.parse_json(game_json, game_id)
         if json_df is None or json_df.empty:
-            return None  
+            return None
 
-        if_json = True if len(game_json['liveData']['plays']['allPlays']) > 0 else False
+        if_json = True if len(
+            game_json['liveData']['plays']['allPlays']) > 0 else False
     else:
         if_json = False
 
@@ -281,8 +369,10 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
 
     # Check if the json is missing the plays...if it is scrape ESPN for the coordinates
     if not if_json:
-        espn_df = espn_pbp.scrape_game(date, teams['Home'], teams['Away'], game_id=espn_id)
-        game_df = combine_espn_html_pbp(html_df, espn_df, str(game_id), date, teams['Away'], teams['Home'])
+        espn_df = espn_pbp.scrape_game(
+            date, teams['Home'], teams['Away'], game_id=espn_id)
+        game_df = combine_espn_html_pbp(html_df, espn_df, str(
+            game_id), date, teams['Away'], teams['Home'])
 
         # Sometimes espn is corrupted so can't get coordinates
         if espn_df is None or espn_df.empty:
@@ -293,6 +383,7 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
     if game_df is not None:
         game_df['Home_Coach'] = roster['head_coaches']['Home']
         game_df['Away_Coach'] = roster['head_coaches']['Away']
+        game_df['Game_Id_Json'] = game_id
 
     return game_df
 
@@ -300,11 +391,11 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
 def scrape_shifts(game_id, players, date):
     """
     Scrape the Shift charts (or TOI tables)
-    
+
     :param game_id: json game id
     :param players: dict of players with numbers and id's
     :param date: date of game
-    
+
     :return: DataFrame with info or None if it fails
     """
     shifts_df = None
@@ -326,24 +417,29 @@ def scrape_shifts(game_id, players, date):
     return shifts_df
 
 
-def scrape_game(game_id, date, if_scrape_shifts):
+def scrape_game(game_id, date, if_scrape_shifts, if_scrape_pbp):
     """
     This scrapes the info for the game.
     The pbp is automatically scraped, and the whether or not to scrape the shifts is left up to the user.
-    
+
     :param game_id: game to scrap
     :param date: ex: 2016-10-24
     :param if_scrape_shifts: Boolean indicating whether to also scrape shifts 
-    
+
     :return: DataFrame of pbp info
              (optional) DataFrame with shift info otherwise just None
     """
     print(' '.join(['Scraping Game ', game_id, date]))
     shifts_df = None
+    pbp_df = None
 
     roster = playing_roster.scrape_roster(game_id)
-    game_json = json_pbp.get_pbp(game_id)           # Contains both player info (id's) and plays
+    # Contains both player info (id's) and plays
+    game_json = json_pbp.get_pbp(game_id)
     players, teams = get_teams_and_players(game_json, roster, game_id)
+
+    game_df = srape_game_details(game_id, game_json)
+    players_df = scrape_game_players(game_id, players, teams)
 
     # Game fails without any of these
     if not roster or not game_json or not teams or not players:
@@ -353,7 +449,8 @@ def scrape_game(game_id, date, if_scrape_shifts):
 
         return None, None
 
-    pbp_df = scrape_pbp(game_id, date, roster, game_json, players, teams)
+    if if_scrape_pbp:
+        pbp_df = scrape_pbp(game_id, date, roster, game_json, players, teams)
 
     # Only scrape shifts if asked and pbp is good
     if if_scrape_shifts and pbp_df is not None:
@@ -362,4 +459,4 @@ def scrape_game(game_id, date, if_scrape_shifts):
     if pbp_df is None:
         broken_pbp_games.extend([[game_id, date]])
 
-    return pbp_df, shifts_df
+    return pbp_df, shifts_df, game_df, players_df

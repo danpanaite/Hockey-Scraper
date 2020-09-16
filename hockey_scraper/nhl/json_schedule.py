@@ -12,10 +12,10 @@ def get_schedule(date_from, date_to):
     """
     Scrapes games in date range
     Ex: https://statsapi.web.nhl.com/api/v1/schedule?startDate=2010-10-03&endDate=2011-06-20
-    
+
     :param date_from: scrape from this date
     :param date_to: scrape until this date
-    
+
     :return: raw json of schedule of date range
     """
     page_info = {
@@ -25,13 +25,15 @@ def get_schedule(date_from, date_to):
         "season": shared.get_season(date_from),
     }
 
+    print(page_info['url'])
+
     return json.loads(shared.get_file(page_info))
 
 
 def chunk_schedule_calls(from_date, to_date):
     """
     The schedule endpoint sucks when handling a big date range. So instead I call in increments of n days.
-    
+
     :param date_from: scrape from this date
     :param date_to: scrape until this date
 
@@ -40,15 +42,18 @@ def chunk_schedule_calls(from_date, to_date):
     sched = []
     days_per_call = 50
 
-    from_date = datetime.strptime(from_date, "%Y-%m-%d") 
+    from_date = datetime.strptime(from_date, "%Y-%m-%d")
     to_date = datetime.strptime(to_date, "%Y-%m-%d")
-    num_days = (to_date - from_date).days + 1  # +1 since difference is looking for total number of days
+    # +1 since difference is looking for total number of days
+    num_days = (to_date - from_date).days + 1
 
     for offset in range(0, num_days, days_per_call):
-        f_chunk = datetime.strftime(from_date + timedelta(days=offset), "%Y-%m-%d")
+        f_chunk = datetime.strftime(
+            from_date + timedelta(days=offset), "%Y-%m-%d")
 
         # We need the min bec. if the chunks are evenly sized this prevents us from overshooting the max
-        t_chunk = datetime.strftime(from_date + timedelta(days=min(num_days-1, offset+days_per_call-1)), "%Y-%m-%d")
+        t_chunk = datetime.strftime(
+            from_date + timedelta(days=min(num_days-1, offset+days_per_call-1)), "%Y-%m-%d")
 
         chunk_sched = get_schedule(f_chunk, t_chunk)
         sched.append(chunk_sched['dates'])
@@ -62,9 +67,9 @@ def get_dates(games):
 
     We sort all the games and retrieve the schedule from the beginning of the season from the earliest game
     until the end of most recent season.
-    
+
     :param games: list with game_id's ex: 2016020001
-    
+
     :return: list with game_id and corresponding date for all games
     """
     today = datetime.today()
@@ -73,7 +78,7 @@ def get_dates(games):
     games = list(map(str, games))
     games.sort()
 
-    date_from = '-'.join([games[0][:4], '9', '1']) 
+    date_from = '-'.join([games[0][:4], '10', '1'])
     year_to = int(games[-1][:4])
 
     # If the last game is part of the ongoing season then only request the schedule until Today
@@ -81,10 +86,12 @@ def get_dates(games):
     if year_to == shared.get_season(datetime.strftime(today, "%Y-%m-%d")):
         date_to = '-'.join([str(today.year), str(today.month), str(today.day)])
     else:
-        date_to = datetime.strftime(shared.season_end_bound(year_to+1), "%Y-%m-%d")  # Newest game in sample
+        date_to = datetime.strftime(shared.season_end_bound(
+            year_to+1), "%Y-%m-%d")  # Newest game in sample
 
     # TODO: Assume true is live here -> Workaround
-    schedule = scrape_schedule(date_from, date_to, preseason=True, not_over=True)
+    schedule = scrape_schedule(
+        date_from, date_to, preseason=True, not_over=True)
 
     # Only return games we want in range
     games_list = []
@@ -98,13 +105,13 @@ def get_dates(games):
 def scrape_schedule(date_from, date_to, preseason=False, not_over=False):
     """
     Calls getSchedule and scrapes the raw schedule Json
-    
+
     :param date_from: scrape from this date
     :param date_to: scrape until this date
     :param preseason: Boolean indicating whether include preseason games (default if False)
     :param not_over: Boolean indicating whether we scrape games not finished. 
                      Means we relax the requirement of checking if the game is over. 
-    
+
     :return: list with all the game id's
     """
     schedule = []
@@ -116,17 +123,20 @@ def scrape_schedule(date_from, date_to, preseason=False, not_over=False):
                 if game['status']['detailedState'] == 'Final' or not_over:
                     game_id = int(str(game['gamePk'])[5:])
 
+                    if str(game['gamePk'])[4:6] == '12':
+                        continue
+
                     if (game_id >= 20000 or preseason) and game_id < 40000:
                         schedule.append({
-                                "game_id": game['gamePk'], 
-                                 "date": day['date'], 
-                                 "start_time": datetime.strptime(game['gameDate'][:-1], "%Y-%m-%dT%H:%M:%S"),
-                                 "venue": game['venue'].get('name'),
-                                 "home_team": shared.get_team(game['teams']['home']['team']['name'].upper()),
-                                 "away_team": shared.get_team(game['teams']['away']['team']['name'].upper()),
-                                 "home_score": game['teams']['home'].get("score"),
-                                 "away_score": game['teams']['away'].get("score"),
-                                 "status": game["status"]["abstractGameState"]
+                            "game_id": game['gamePk'],
+                            "date": day['date'],
+                            "start_time": datetime.strptime(game['gameDate'][:-1], "%Y-%m-%dT%H:%M:%S"),
+                            "venue": game['venue'].get('name'),
+                            "home_team": shared.get_team(game['teams']['home']['team']['name'].upper()),
+                            "away_team": shared.get_team(game['teams']['away']['team']['name'].upper()),
+                            "home_score": game['teams']['home'].get("score"),
+                            "away_score": game['teams']['away'].get("score"),
+                            "status": game["status"]["abstractGameState"]
                         })
 
     return schedule

@@ -12,7 +12,7 @@ import hockey_scraper.utils.shared as shared
 def print_errors():
     """
     Print errors with scraping.
-    
+
     Also puts errors in the "error" string (would just print the string but it would look like shit on one line. I
     could store it as I "should" print it but that isn't how I want it). 
 
@@ -51,33 +51,46 @@ def print_errors():
     game_scraper.missing_coords = []
 
 
-def scrape_list_of_games(games, if_scrape_shifts):
+def scrape_list_of_games(games, if_scrape_shifts, if_scrape_pbp=True):
     """
     Given a list of game_id's (and a date for each game) it scrapes them
-    
+
     :param games: list of [game_id, date]
     :param if_scrape_shifts: Boolean indicating whether to also scrape shifts     
-    
+
     :return: DataFrame of pbp info, also shifts if specified
     """
     pbp_dfs = []
     shifts_dfs = []
+    game_dfs = []
+    players_dfs = []
 
     for game in games:
-        pbp_df, shifts_df = game_scraper.scrape_game(str(game["game_id"]), game["date"], if_scrape_shifts)
+        pbp_df, shifts_df, game_df, players_df = game_scraper.scrape_game(
+            str(game["game_id"]), game["date"], if_scrape_shifts, if_scrape_pbp)
+
+        # print(game_df)
+        # print(players_df)
+
         if pbp_df is not None:
             pbp_dfs.extend([pbp_df])
         if shifts_df is not None:
             shifts_dfs.extend([shifts_df])
+        if game_dfs is not None:
+            game_dfs.extend([game_df])
+        if players_dfs is not None:
+            players_dfs.extend([players_df])
+
+    game_df = pd.concat(game_dfs)
+    players_df = pd.concat(players_dfs)
 
     # Check if any games...if not let's get out of here
     if len(pbp_dfs) == 0:
-        return None, None
+        return None, None, game_df, players_df
     else:
         pbp_df = pd.concat(pbp_dfs)
         pbp_df = pbp_df.reset_index(drop=True)
         pbp_df.apply(lambda row: game_scraper.check_goalie(row), axis=1)
-
     if if_scrape_shifts:
         shifts_df = pd.concat(shifts_dfs).reset_index(drop=True)
     else:
@@ -86,13 +99,13 @@ def scrape_list_of_games(games, if_scrape_shifts):
     # Print all errors associated with scrape call
     print_errors()
 
-    return pbp_df, shifts_df
+    return pbp_df, shifts_df, game_df, players_df
 
 
 def scrape_schedule(from_date, to_date, data_format='pandas', rescrape=False, docs_dir=False):
     """
     Scrape the games schedule in a given range.
-    
+
     :param from_date: date you want to scrape from
     :param to_date: date you want to scrape to 
     :param data_format: format you want data in - csv or  pandas (pandas is default)
@@ -101,10 +114,11 @@ def scrape_schedule(from_date, to_date, data_format='pandas', rescrape=False, do
                      in after scraping. When True it'll refer to (or if needed create) such a repository in the home
                      directory. When provided a string it'll try to use that. Here it must be a valid directory otheriwse
                      it won't work (I won't make it for you). When False the files won't be saved.
-    
+
     :return: DataFrame of None
     """
-    cols = ["game_id", "date", "venue", "home_team", "away_team", "start_time", "home_score", "away_score", "status"]
+    cols = ["game_id", "date", "venue", "home_team", "away_team",
+            "start_time", "home_score", "away_score", "status"]
 
     shared.check_data_format(data_format)
     shared.check_valid_dates(from_date, to_date)
@@ -115,7 +129,8 @@ def scrape_schedule(from_date, to_date, data_format='pandas', rescrape=False, do
     print("Scraping the schedule between {} and {}".format(from_date, to_date))
 
     # live = True allows us to scrape games that aren't final
-    sched = json_schedule.scrape_schedule(from_date, to_date, preseason=True, not_over=True)
+    sched = json_schedule.scrape_schedule(
+        from_date, to_date, preseason=True, not_over=True)
     sched_df = pd.DataFrame(sched, columns=cols)
 
     if data_format.lower() == 'csv':
@@ -128,7 +143,7 @@ def scrape_date_range(from_date, to_date, if_scrape_shifts, data_format='csv', p
                       docs_dir=False):
     """
     Scrape games in given date range
-    
+
     :param from_date: date you want to scrape from
     :param to_date: date you want to scrape to
     :param if_scrape_shifts: Boolean indicating whether to also scrape shifts 
@@ -140,7 +155,7 @@ def scrape_date_range(from_date, to_date, if_scrape_shifts, data_format='csv', p
                      in after scraping. When True it'll refer to (or if needed create) such a repository in the home
                      directory. When provided a string it'll try to use that. Here it must be a valid directory otheriwse
                      it won't work (I won't make it for you). When False the files won't be saved.
-    
+
     :return: Dictionary with DataFrames and errors or None
     """
     shared.check_data_format(data_format)
@@ -159,10 +174,10 @@ def scrape_date_range(from_date, to_date, if_scrape_shifts, data_format='csv', p
         return {"pbp": pbp_df, "shifts": shifts_df} if if_scrape_shifts else {"pbp": pbp_df}
 
 
-def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False, rescrape=False, docs_dir=False):
+def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False, rescrape=False, docs_dir=False, if_scrape_pbp=True):
     """
     Given list of seasons it scrapes all the seasons 
-    
+
     :param seasons: list of seasons
     :param if_scrape_shifts: Boolean indicating whether to also scrape shifts 
     :param data_format: format you want data in - csv or pandas (csv is default)
@@ -173,7 +188,7 @@ def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False
                      in after scraping. When True it'll refer to (or if needed create) such a repository in the home
                      directory. When provided a string it'll try to use that. Here it must be a valid directory otheriwse
                      it won't work (I won't make it for you). When False the files won't be saved.
-    
+
     :return: Dictionary with DataFrames and errors or None
     """
     shared.check_data_format(data_format)
@@ -181,33 +196,47 @@ def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False
     shared.if_rescrape(rescrape)
 
     # Holds all seasons scraped (if not csv)
-    master_pbps, master_shifts = [], []
+    master_pbps, master_shifts, master_games, master_players = [], [], [], []
 
     for season in seasons:
-        from_date = '-'.join([str(season), '9', '1'])
+        from_date = '-'.join([str(season), '10', '1'])
         to_date = '-'.join([str(season + 1), '7', '1'])
 
         games = json_schedule.scrape_schedule(from_date, to_date, preseason)
-        pbp_df, shifts_df = scrape_list_of_games(games, if_scrape_shifts)
+        pbp_df, shifts_df, game_df, players_df = scrape_list_of_games(
+            games, if_scrape_shifts, if_scrape_pbp)
 
         if data_format.lower() == 'csv':
             shared.to_csv(str(season) + str(season + 1), pbp_df, "nhl", "pbp")
-            shared.to_csv(str(season) + str(season + 1), shifts_df, "nhl", "shifts")
+            shared.to_csv(str(season) + str(season + 1),
+                          shifts_df, "nhl", "shifts")
         else:
             master_pbps.append(pbp_df)
             master_shifts.append(shifts_df)
+            master_games.append(game_df),
+            master_players.append(players_df)
 
-    if data_format.lower() == 'pandas':
-        if if_scrape_shifts:
-            return {"pbp": pd.concat(master_pbps), "shifts": pd.concat(master_shifts)}
-        else:
-            return {"pbp": pd.concat(master_pbps)}
+    scrape_results = {}
+
+    if not all(pbp is None for pbp in master_pbps):
+        scrape_results['pbp'] = pd.concat(master_pbps)
+
+    if not all(shifts is None for shifts in master_shifts):
+        scrape_results['shifts'] = pd.concat(master_shifts)
+
+    if not all(games is None for games in master_games):
+        scrape_results['games'] = pd.concat(master_games)
+
+    if not all(players is None for players in master_players):
+        scrape_results['players'] = pd.concat(master_players)
+
+    return scrape_results
 
 
 def scrape_games(games, if_scrape_shifts, data_format='csv', rescrape=False, docs_dir=False):
     """
     Scrape a list of games
-    
+
     :param games: list of game_ids
     :param if_scrape_shifts: Boolean indicating whether to also scrape shifts 
     :param data_format: format you want data in - csv or pandas (csv is default)
@@ -216,7 +245,7 @@ def scrape_games(games, if_scrape_shifts, data_format='csv', rescrape=False, doc
                      in after scraping. When True it'll refer to (or if needed create) such a repository in the home
                      directory. When provided a string it'll try to use that. Here it must be a valid directory otheriwse
                      it won't work (I won't make it for you). When False the files won't be saved. 
-    
+
     :return: Dictionary with DataFrames and errors or None
     """
     shared.check_data_format(data_format)
@@ -227,10 +256,11 @@ def scrape_games(games, if_scrape_shifts, data_format='csv', rescrape=False, doc
     games_list = json_schedule.get_dates(games)
 
     # Scrape pbp and shifts
-    pbp_df, shifts_df = scrape_list_of_games(games_list, if_scrape_shifts)
+    pbp_df, shifts_df, game_df, players_df = scrape_list_of_games(
+        games_list, if_scrape_shifts)
 
     if data_format.lower() == 'csv':
         shared.to_csv(str(int(time.time())), pbp_df, "nhl", "pbp")
         shared.to_csv(str(int(time.time())), shifts_df, "nhl", "shifts")
     else:
-        return {"pbp": pbp_df, "shifts": shifts_df} if if_scrape_shifts else {"pbp": pbp_df}
+        return {"pbp": pbp_df, "shifts": shifts_df, "games": game_df, "players": players_df} if if_scrape_shifts else {"pbp": pbp_df, "game": game_df, "players": players_df}
