@@ -4,44 +4,46 @@ Functions to scrape by season, games, and date range
 
 import time
 import pandas as pd
+from datetime import datetime
 import hockey_scraper.nhl.game_scraper as game_scraper
 import hockey_scraper.nhl.json_schedule as json_schedule
 import hockey_scraper.utils.shared as shared
 
 
-def print_errors():
+def print_errors(detailed=True):
     """
     Print errors with scraping.
 
-    Also puts errors in the "error" string (would just print the string but it would look like shit on one line. I
-    could store it as I "should" print it but that isn't how I want it). 
-
+    :param detailed: When False only print player IDs otherwise all
+    
     :return: None
     """
     global errors
 
-    if game_scraper.broken_pbp_games:
-        print('\nBroken pbp:')
+    print("")
+
+    if game_scraper.broken_pbp_games and detailed:
+        print('Broken pbp:')
         for x in game_scraper.broken_pbp_games:
-            print("-", x[0], x[1])
+            print("  -", x[0], x[1])
         print("")
 
-    if game_scraper.broken_shifts_games:
+    if game_scraper.broken_shifts_games and detailed:
         print('Broken shifts:')
         for x in game_scraper.broken_shifts_games:
-            print("-", x[0], x[1])
+            print("  -", x[0], x[1])
+        print("")
+
+    if game_scraper.missing_coords and detailed:
+        print('Games missing coordinates:')
+        for x in game_scraper.missing_coords:
+            print("  -", x[0], x[1])
         print("")
 
     if game_scraper.players_missing_ids:
-        print("Players missing ID's:")
+        print("Players missing IDs:")
         for x in game_scraper.players_missing_ids:
-            print("-", x[0], x[1])
-        print("")
-
-    if game_scraper.missing_coords:
-        print('Games missing coordinates:')
-        for x in game_scraper.missing_coords:
-            print("-", x[0], x[1])
+            print("  -", x[0], x[1])
         print("")
 
     # Clear them all out for the next call
@@ -96,8 +98,8 @@ def scrape_list_of_games(games, if_scrape_shifts, if_scrape_pbp=True):
     else:
         shifts_df = None
 
-    # Print all errors associated with scrape call
-    print_errors()
+    # Only print full details when # games > 25
+    print_errors(len(games) >= 25)
 
     return pbp_df, shifts_df, game_df, players_df
 
@@ -199,8 +201,8 @@ def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False
     master_pbps, master_shifts, master_games, master_players = [], [], [], []
 
     for season in seasons:
-        from_date = '-'.join([str(season), '10', '1'])
-        to_date = '-'.join([str(season + 1), '7', '1'])
+        from_date = shared.season_start_bound(season)
+        to_date = datetime.strftime(shared.season_end_bound(str(season + 1)), "%Y-%m-%d")
 
         games = json_schedule.scrape_schedule(from_date, to_date, preseason)
         pbp_df, shifts_df, game_df, players_df = scrape_list_of_games(

@@ -231,9 +231,6 @@ def combine_html_json_pbp(json_df, html_df, game_id, date):
     json_df = json_df.drop(
         ['p1_name', 'p2_name', 'p2_ID', 'p3_name', 'p3_ID'], axis=1)
 
-    # print("json", json_df.dtypes)
-    # print("html", html_df.dtypes)
-
     try:
         # If they aren't equal it's usually due to the HTML containing a challenge event
         if html_df.shape[0] == json_df.shape[0]:
@@ -334,8 +331,13 @@ def scrape_pbp_live(game_id, date, roster, game_json, players, teams, espn_id=No
 
 def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, html_df=None):
     """
-    Automatically scrapes the json and html, if the json is empty the html picks up some of the slack and the espn
-    xml is also scraped for coordinates.
+    Scrape the Pbp info. The HTML is always scraped.
+
+    The Json is parse whe season >= 2010 and there are plays. Otherwise ESPN is gotten to supplement
+    the HTML with coordinate.
+
+    The espn_id and the html data can be fed as keyword argument to speed up execution. This is used by
+    the live game scraping class.
 
     :param game_id: json game id
     :param date: date of game
@@ -349,16 +351,10 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
     :return: DataFrame with info or None if it fails
     """
     # Coordinates are only available in json from 2010 onwards
-    # Note: This doesn't work as intended for second half of 2009 season...it still works just takes slightly longer
-    if int(str(game_id)[:4]) >= 2010:
+    if int(str(game_id)[:4]) >= 2010 and len(game_json['liveData']['plays']['allPlays']) > 0:
         json_df = json_pbp.parse_json(game_json, game_id)
-        if json_df is None or json_df.empty:
-            return None
-
-        if_json = True if len(
-            game_json['liveData']['plays']['allPlays']) > 0 else False
     else:
-        if_json = False
+        json_df = None
 
     # For live sometimes the json lags the html so if given we don't bother
     if not isinstance(html_df, pd.DataFrame):
@@ -368,11 +364,9 @@ def scrape_pbp(game_id, date, roster, game_json, players, teams, espn_id=None, h
         return None
 
     # Check if the json is missing the plays...if it is scrape ESPN for the coordinates
-    if not if_json:
-        espn_df = espn_pbp.scrape_game(
-            date, teams['Home'], teams['Away'], game_id=espn_id)
-        game_df = combine_espn_html_pbp(html_df, espn_df, str(
-            game_id), date, teams['Away'], teams['Home'])
+    if json_df is None or json_df.empty:
+        espn_df = espn_pbp.scrape_game(date, teams['Home'], teams['Away'], game_id=espn_id)
+        game_df = combine_espn_html_pbp(html_df, espn_df, str(game_id), date, teams['Away'], teams['Home'])
 
         # Sometimes espn is corrupted so can't get coordinates
         if espn_df is None or espn_df.empty:
@@ -408,7 +402,7 @@ def scrape_shifts(game_id, players, date):
         shifts_df = html_shifts.scrape_game(game_id, players)
 
         if shifts_df is None or shifts_df.empty:
-            shared.print_error("Unable to scrape shifts for game" + game_id)
+            shared.print_error("Unable to scrape shifts for game " + game_id)
             broken_shifts_games.extend([[game_id, date]])
             return None
 

@@ -201,9 +201,12 @@ def parse_espn(espn_xml):
 
     events = tree[1]
     plays = [parse_event(event.text) for event in events]
-    plays = [play for play in plays if play is not None]    # Get rid of plays that are None
+    plays = [play for play in plays if play is not None]
 
-    return pd.DataFrame(plays, columns=columns)
+    df = pd.DataFrame(plays, columns=columns)
+    df.period = df.period.astype(int)  # Causes join issues with html later
+
+    return df
 
 
 def scrape_game(date, home_team, away_team, game_id=None):
@@ -229,12 +232,11 @@ def scrape_game(date, home_team, away_team, game_id=None):
     try:
         espn_df = parse_espn(espn_xml)
     except Exception as e:
-        shared.print_error("Error parsing Espn pbp for game {a} {b} {c} {d}".format(a=date, b=home_team, c=away_team, d=e))
-        return None
+        shared.print_error("Issue parsing Espn pbp for game {a} {b} {c} {d}".format(a=date, b=home_team, c=away_team, d=e))
+        return pd.DataFrame()
 
-    espn_df.period = espn_df.period.astype(int)
+    if espn_df.shape[0] == 0:
+        shared.print_error("Espn is missing coordinates for game {a} {b} {c}".format(a=date, b=home_team, c=away_team))
     
-    return pd.DataFrame()
-
-
+    return espn_df
 

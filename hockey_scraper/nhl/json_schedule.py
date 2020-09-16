@@ -78,7 +78,7 @@ def get_dates(games):
     games = list(map(str, games))
     games.sort()
 
-    date_from = '-'.join([games[0][:4], '10', '1'])
+    date_from = shared.season_start_bound(games[0][:4])
     year_to = int(games[-1][:4])
 
     # If the last game is part of the ongoing season then only request the schedule until Today

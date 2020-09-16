@@ -13,12 +13,6 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from . import save_pages as sp
 
-# def custom_formatwarning(msg, *args, **kwargs): 
-#     print("Queso----------{msg}")
-#     return msg
-
-# warnings.formatwarning = custom_formatwarning
-
 # Directory where to save pages
 docs_dir = False
 
@@ -229,13 +223,30 @@ def get_season(date):
     return int(year)
 
 
+def season_start_bound(year):
+    """
+    Get start bound for a season.
+
+    There is a bug in the schedule API for 2016 that causes the pushback to 09-30
+
+    :param year: str of year for given date
+
+    :return: str of first date in season
+    """
+    if int(year) == 2016:
+        return "2016-09-30"
+
+    return "{}-09-01".format(str(year))
+
+
+
 def season_end_bound(year):
     """
     Determine the end bound of a given season. Changes depending on if it's the pandemic season or not
 
     :param year: str of year for given date
 
-    :return: season
+    :return: Datetime obj of last date in season
     """
     normal_end_bound = datetime.strptime('-'.join([str(year), '08-31']), "%Y-%m-%d")
     pandemic_end_bound = datetime.strptime('-'.join([str(year), '10-31']), "%Y-%m-%d")
