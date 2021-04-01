@@ -141,8 +141,7 @@ def scrape_schedule(from_date, to_date, data_format='pandas', rescrape=False, do
         return sched_df
 
 
-def scrape_date_range(from_date, to_date, if_scrape_shifts, data_format='csv', preseason=False, rescrape=False,
-                      docs_dir=False):
+def scrape_date_range(from_date, to_date, if_scrape_shifts, data_format='csv', preseason=False, rescrape=False, docs_dir=False):
     """
     Scrape games in given date range
 
@@ -210,9 +209,8 @@ def scrape_seasons(seasons, if_scrape_shifts, data_format='csv', preseason=False
 
         if data_format.lower() == 'csv':
             shared.to_csv(str(season) + str(season + 1), pbp_df, "nhl", "pbp")
-            shared.to_csv(str(season) + str(season + 1),
-                          shifts_df, "nhl", "shifts")
-        else:
+            shared.to_csv(str(season) + str(season + 1), shifts_df, "nhl", "shifts")
+        elif pbp_df is not None:
             master_pbps.append(pbp_df)
             master_shifts.append(shifts_df)
             master_games.append(game_df),

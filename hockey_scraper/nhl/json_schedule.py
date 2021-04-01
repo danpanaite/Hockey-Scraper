@@ -8,6 +8,9 @@ import time
 import hockey_scraper.utils.shared as shared
 
 
+# TODO: Currently rescraping page each time since the status of some games may have changed
+# (e.g. Scraped on 2020-01-20 and game on 2020-01-21 was not Final...when use old page again will still think not Final)
+# Need to find a more elegant way of doing this (Metadata???)
 def get_schedule(date_from, date_to):
     """
     Scrapes games in date range
@@ -25,9 +28,7 @@ def get_schedule(date_from, date_to):
         "season": shared.get_season(date_from),
     }
 
-    print(page_info['url'])
-
-    return json.loads(shared.get_file(page_info))
+    return json.loads(shared.get_file(page_info, force=True))
 
 
 def chunk_schedule_calls(from_date, to_date):
@@ -128,15 +129,16 @@ def scrape_schedule(date_from, date_to, preseason=False, not_over=False):
 
                     if (game_id >= 20000 or preseason) and game_id < 40000:
                         schedule.append({
-                            "game_id": game['gamePk'],
-                            "date": day['date'],
-                            "start_time": datetime.strptime(game['gameDate'][:-1], "%Y-%m-%dT%H:%M:%S"),
-                            "venue": game['venue'].get('name'),
-                            "home_team": shared.get_team(game['teams']['home']['team']['name'].upper()),
-                            "away_team": shared.get_team(game['teams']['away']['team']['name'].upper()),
-                            "home_score": game['teams']['home'].get("score"),
-                            "away_score": game['teams']['away'].get("score"),
-                            "status": game["status"]["abstractGameState"]
+                                 "game_id": game['gamePk'], 
+                                 "date": day['date'], 
+                                 "start_time": datetime.strptime(game['gameDate'][:-1], "%Y-%m-%dT%H:%M:%S"),
+                                 "venue": game['venue'].get('name'),
+                                 "home_team": shared.get_team(game['teams']['home']['team']['name']),
+                                 "away_team": shared.get_team(game['teams']['away']['team']['name']),
+                                 "home_score": game['teams']['home'].get("score"),
+                                 "away_score": game['teams']['away'].get("score"),
+                                 "status": game["status"]["abstractGameState"]
                         })
+
 
     return schedule

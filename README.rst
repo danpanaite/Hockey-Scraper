@@ -11,7 +11,7 @@ Hockey-Scraper
 .. inclusion-marker-for-sphinx
 
 
-**Notes:**
+**Note:**
  * Coordinates are only scraped from ESPN for versions 1.33+
  * NWHL usage has been deprecated due to the removal of the pbp information for each game.
 
@@ -195,42 +195,6 @@ Here is a simple example of a way to setup live scraping. I strongly suggest che
            # You can of course do whatever you want here.
            for game in games.live_games:
                to_csv(game)
-
-
-
-.. NWHL Usage
-.. -------------
-
-.. Scrape data on a season by season level:
-
-.. ::
-
-    import hockey_scraper
-
-    # Scrapes the 2015 & 2016 season and stores the data in a Csv file
-    hockey_scraper.nwhl.scrape_seasons([2015, 2016])
-
-    # Scrapes the 2008 season and returns a Pandas DataFrame containing the pbp
-    scraped_data = hockey_scraper.nwhl.scrape_seasons([2017], data_format='Pandas')
-
-.. Scrape a list of games:
-
-.. ::
-
-    import hockey_scraper
-
-    # Scrape some games and store the results in a Csv file
-    # Also saves the scraped pages
-    hockey_scraper.nwhl.scrape_games([14694271, 14814946, 14689491], docs_dir="...Path you specified")
-
-.. Scrape all games in a given date range:
-
-.. ::
-
-    import hockey_scraper
-
-    # Scrapes all games between 2016-10-10 and 2017-01-01 and returns a Pandas DataFrame containing the pbp
-    hockey_scraper.nwhl.scrape_date_range('2016-10-10', '2017-01-01', data_format='pandas')
 
 
 

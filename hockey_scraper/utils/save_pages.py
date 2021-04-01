@@ -17,9 +17,9 @@ def create_base_file_path(file_info):
     :return: path 
     """
     # Shitty fix for when you already have it saved but don't have nwhl folders
-    # if 'nwhl' in file_info['type']:
-    #     if not os.path.isdir(os.path.join(file_info['dir'], 'docs', str(file_info['season']), file_info['type'])):
-    #         os.mkdir(os.path.join(file_info['dir'], 'docs', str(file_info['season']), file_info['type']))
+    if 'nwhl' in file_info['type']:
+        if not os.path.isdir(os.path.join(file_info['dir'], 'docs', str(file_info['season']), file_info['type'])):
+            os.mkdir(os.path.join(file_info['dir'], 'docs', str(file_info['season']), file_info['type']))
 
     return os.path.join(file_info['dir'], 'docs', str(file_info['season']), file_info['type'], file_info['name'] + ".txt")
 
@@ -40,6 +40,8 @@ def create_dir_structure(dir_name):
     """
     Create the basic directory structure for docs_dir if not done yet.
     Creates the docs and csvs subdir if it doesn't exist
+
+    :param dir_name: Name of dir to create
 
     :return None
     """
