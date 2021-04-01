@@ -109,7 +109,7 @@ def get_page(file_info):
         with gzip.open(base_file + ".gz", 'rb') as my_file:
             return my_file.read().decode("utf-8").replace('\n', '')
     else:
-        with open(base_file, 'r') as my_file:
+        with open(base_file, 'r', errors='ignore') as my_file:
             return my_file.read().replace('\n', '')
 
 
